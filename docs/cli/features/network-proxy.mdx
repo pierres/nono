@@ -49,6 +49,8 @@ When proxy mode is active, nono:
 3. Sets `HTTP_PROXY` and `HTTPS_PROXY` in the child's environment
 4. Filters all connections through the proxy
 
+![Proxy architecture flow](/assets/proxy-flow.png)
+
 The proxy runs in the unsandboxed parent process. The sandbox is applied only to the child, which is restricted to `ProxyOnly` mode (only `localhost:<port>` is reachable).
 
 ### Session Token
@@ -190,5 +192,6 @@ nono run -vv --network-profile claude-code --allow-cwd -- my-agent
 ## Next Steps
 
 - [Credential Injection](/cli/features/credential-injection) - Keep API keys out of the sandbox
+- [Supervisor Mode](/cli/features/supervisor) - How supervised execution works
 - [CLI Reference](/cli/usage/flags) - Complete flag documentation including network flags
 - [Security Model](/cli/internals/security-model) - Platform sandbox internals
