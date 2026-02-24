@@ -244,119 +244,77 @@ pub(super) fn handle_seccomp_notification(
 
     // 7. Trust verification for instruction files (TOCTOU protection)
     // If the path is an instruction file, verify it and stash the digest
-    // for re-verification at open time.
-    let mut verified_digest: Option<String> = None;
-    let decision = if let Some(trust_result) = trust_interceptor
-        .as_deref_mut()
-        .and_then(|ti| ti.check_path(&path))
-    {
-        match trust_result {
-            Ok(verified) => {
-                debug!(
-                    "Seccomp: instruction file {} verified (publisher: {})",
-                    path.display(),
-                    verified.publisher,
-                );
-                // Stash the verified digest for TOCTOU re-check at open time
-                verified_digest = Some(verified.digest);
-                // Instruction file verified — proceed to approval backend
-                match config.approval_backend.request_capability(
-                    &nono::supervisor::CapabilityRequest {
-                        request_id: format!("seccomp-{}", unique_request_id()),
-                        path: path.clone(),
-                        access,
-                        reason: Some(
-                            "Sandbox intercepted file operation (seccomp-notify)".to_string(),
-                        ),
-                        child_pid: child.as_raw() as u32,
-                        session_id: config.session_id.to_string(),
-                    },
-                ) {
-                    Ok(d) => {
-                        if d.is_denied() {
-                            record_denial(
-                                denials,
-                                DenialRecord {
-                                    path: path.clone(),
-                                    access,
-                                    reason: DenialReason::UserDenied,
-                                },
-                            );
-                        }
-                        d
-                    }
-                    Err(e) => {
-                        warn!("Approval backend error for seccomp notification: {}", e);
-                        record_denial(
-                            denials,
-                            DenialRecord {
-                                path: path.clone(),
-                                access,
-                                reason: DenialReason::BackendError,
-                            },
-                        );
-                        let _ = deny_notif(notify_fd, notif.id);
-                        return Ok(());
-                    }
+    // for re-verification at open time. Failed verification results in early denial.
+    let verified_digest: Option<String> =
+        if let Some(trust_result) = trust_interceptor.and_then(|ti| ti.check_path(&path)) {
+            match trust_result {
+                Ok(verified) => {
+                    debug!(
+                        "Seccomp: instruction file {} verified (publisher: {})",
+                        path.display(),
+                        verified.publisher,
+                    );
+                    Some(verified.digest)
                 }
-            }
-            Err(reason) => {
-                // Instruction file failed trust verification — auto-deny
-                debug!(
-                    "Seccomp: instruction file {} failed trust verification: {}",
-                    path.display(),
-                    reason
-                );
-                record_denial(
-                    denials,
-                    DenialRecord {
-                        path: path.clone(),
-                        access,
-                        reason: DenialReason::PolicyBlocked,
-                    },
-                );
-                let _ = deny_notif(notify_fd, notif.id);
-                return Ok(());
-            }
-        }
-    } else {
-        // 8. Not an instruction file — delegate to approval backend directly
-        let request = nono::supervisor::CapabilityRequest {
-            request_id: format!("seccomp-{}", unique_request_id()),
-            path: path.clone(),
-            access,
-            reason: Some("Sandbox intercepted file operation (seccomp-notify)".to_string()),
-            child_pid: child.as_raw() as u32,
-            session_id: config.session_id.to_string(),
-        };
-
-        match config.approval_backend.request_capability(&request) {
-            Ok(d) => {
-                if d.is_denied() {
+                Err(reason) => {
+                    // Instruction file failed trust verification — auto-deny
+                    debug!(
+                        "Seccomp: instruction file {} failed trust verification: {}",
+                        path.display(),
+                        reason
+                    );
                     record_denial(
                         denials,
                         DenialRecord {
                             path: path.clone(),
                             access,
-                            reason: DenialReason::UserDenied,
+                            reason: DenialReason::PolicyBlocked,
                         },
                     );
+                    let _ = deny_notif(notify_fd, notif.id);
+                    return Ok(());
                 }
-                d
             }
-            Err(e) => {
-                warn!("Approval backend error for seccomp notification: {}", e);
+        } else {
+            None
+        };
+
+    // 8. Delegate to approval backend (for both instruction and non-instruction files)
+    let request = nono::supervisor::CapabilityRequest {
+        request_id: format!("seccomp-{}", unique_request_id()),
+        path: path.clone(),
+        access,
+        reason: Some("Sandbox intercepted file operation (seccomp-notify)".to_string()),
+        child_pid: child.as_raw() as u32,
+        session_id: config.session_id.to_string(),
+    };
+
+    let decision = match config.approval_backend.request_capability(&request) {
+        Ok(d) => {
+            if d.is_denied() {
                 record_denial(
                     denials,
                     DenialRecord {
                         path: path.clone(),
                         access,
-                        reason: DenialReason::BackendError,
+                        reason: DenialReason::UserDenied,
                     },
                 );
-                let _ = deny_notif(notify_fd, notif.id);
-                return Ok(());
             }
+            d
+        }
+        Err(e) => {
+            warn!("Approval backend error for seccomp notification: {}", e);
+            record_denial(
+                denials,
+                DenialRecord {
+                    path: path.clone(),
+                    access,
+                    reason: DenialReason::BackendError,
+                },
+            );
+            let _ = deny_notif(notify_fd, notif.id);
+            return Ok(());
         }
     };
 

@@ -21,10 +21,10 @@ pub const IN_TOTO_PAYLOAD_TYPE: &str = "application/vnd.in-toto+json";
 pub const IN_TOTO_STATEMENT_TYPE: &str = "https://in-toto.io/Statement/v1";
 
 /// The predicate type for nono instruction file attestations.
-pub const NONO_PREDICATE_TYPE: &str = "https://novo.sh/attestation/instruction-file/v1";
+pub const NONO_PREDICATE_TYPE: &str = "https://nono.sh/attestation/instruction-file/v1";
 
 /// The predicate type for nono trust policy attestations.
-pub const NONO_POLICY_PREDICATE_TYPE: &str = "https://novo.sh/attestation/trust-policy/v1";
+pub const NONO_POLICY_PREDICATE_TYPE: &str = "https://nono.sh/attestation/trust-policy/v1";
 
 /// The predicate type for nono multi-file attestations.
 ///

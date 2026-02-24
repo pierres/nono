@@ -444,8 +444,8 @@ pub fn verify_bundle_subject_name(bundle: &Bundle, expected_path: &Path) -> Resu
 
 /// Extract the `predicateType` from a bundle's DSSE envelope payload.
 ///
-/// Returns the predicate type string (e.g., `novo.sh/attestation/instruction-file/v1`
-/// or `novo.sh/attestation/trust-policy/v1`).
+/// Returns the predicate type string (e.g., `nono.sh/attestation/instruction-file/v1`
+/// or `nono.sh/attestation/trust-policy/v1`).
 ///
 /// # Errors
 ///
