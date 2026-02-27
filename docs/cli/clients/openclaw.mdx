@@ -368,10 +368,10 @@ nono run --profile openclaw --allow-cwd \
 ```
 
 **How it works:**
-1. Real API key is stored in your system keyring (never in files)
-2. nono starts a proxy on port 19999 and sets `GEMINI_API_KEY` to a session-specific phantom token
-3. OpenClaw reads `GEMINI_API_KEY` and sends requests to `http://127.0.0.1:19999/gemini/v1beta`
-4. The proxy validates the phantom token, swaps in the real API key, forwards to Google's API
+1. Real API keys are stored in your system keyring (never in files)
+2. nono starts a proxy on port 19999 and sets provider-specific API key environment variables (e.g., `GEMINI_API_KEY`, `OPENAI_API_KEY`) to a session-specific phantom token
+3. OpenClaw reads the phantom token and sends requests to the configured `baseUrl` (e.g., `http://127.0.0.1:19999/gemini/v1beta`)
+4. The proxy validates the phantom token, swaps in the real API key, and forwards the request to the provider's API
 5. The real API key never enters the sandboxed process
 
 This protects against prompt injection attacks that attempt to exfiltrate credentials - even if an attacker tricks the agent into revealing its "API key", they only get the worthless phantom token.
