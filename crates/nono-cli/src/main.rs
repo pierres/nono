@@ -451,6 +451,7 @@ fn run_why(args: WhyArgs) -> Result<()> {
             allow_bind: vec![],
             allow_port: vec![],
             proxy_port: None,
+            no_hooks: false,
         };
 
         let (mut caps, needs_unlink) = CapabilitySet::from_profile(&prof, &workdir, &sandbox_args)?;
@@ -489,6 +490,7 @@ fn run_why(args: WhyArgs) -> Result<()> {
             allow_bind: vec![],
             allow_port: vec![],
             proxy_port: None,
+            no_hooks: false,
         };
 
         let (mut caps, needs_unlink) = CapabilitySet::from_args(&sandbox_args)?;
@@ -779,6 +781,7 @@ fn run_sandbox(run_args: RunArgs, silent: bool) -> Result<()> {
             proxy_port: args.proxy_port,
             open_url_origins: prepared.open_url_origins,
             open_url_allow_localhost: prepared.open_url_allow_localhost,
+            no_hooks: args.no_hooks,
         },
     )
 }
@@ -920,6 +923,7 @@ fn run_wrap(wrap_args: WrapArgs, silent: bool) -> Result<()> {
         ExecutionFlags {
             strategy: exec_strategy::ExecStrategy::Direct,
             no_diagnostics,
+            no_hooks: args.no_hooks,
             ..ExecutionFlags::defaults(silent)?
         },
     )
@@ -976,6 +980,8 @@ struct ExecutionFlags {
     open_url_origins: Vec<String>,
     /// Whether to allow http://localhost URL opens
     open_url_allow_localhost: bool,
+    /// Skip agent system prompt injection
+    no_hooks: bool,
 }
 
 impl ExecutionFlags {
@@ -1012,6 +1018,7 @@ impl ExecutionFlags {
             proxy_port: None,
             open_url_origins: Vec::new(),
             open_url_allow_localhost: false,
+            no_hooks: false,
         })
     }
 }
@@ -1189,7 +1196,7 @@ fn execute_sandboxed(
     }
 
     // Detect if we're launching Claude Code and inject system prompt
-    let prompt_file_path = if is_claude_command(&program) {
+    let prompt_file_path = if !flags.no_hooks && is_claude_command(&program) {
         write_system_prompt_file(flags.silent)
     } else {
         None
@@ -1851,7 +1858,7 @@ fn prepare_sandbox(args: &SandboxArgs, silent: bool) -> Result<PreparedSandbox> 
         hooks::remove_legacy_claude_md_section();
 
         // Install hooks defined in the profile (idempotent - only installs if needed)
-        if !prof.hooks.hooks.is_empty() {
+        if !prof.hooks.hooks.is_empty() && !args.no_hooks {
             match hooks::install_profile_hooks(&prof.hooks.hooks) {
                 Ok(results) => {
                     for (target, result) in results {
@@ -2404,6 +2411,7 @@ mod tests {
             allow_bind: vec![],
             allow_port: vec![],
             proxy_port: None,
+            no_hooks: false,
         }
     }
 

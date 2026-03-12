@@ -234,6 +234,28 @@ fn allow_net_overrides_profile_external_proxy() {
 }
 
 #[test]
+fn env_nono_no_hooks() {
+    let output = nono_bin()
+        .env("NONO_NO_HOOKS", "true")
+        .args([
+            "run",
+            "--profile",
+            "claude-code",
+            "--allow-cwd",
+            "--dry-run",
+            "claude",
+        ])
+        .output()
+        .expect("failed to run nono");
+
+    assert!(
+        output.status.success(),
+        "NONO_NO_HOOKS=true should be accepted, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn env_conflict_allow_net_and_block_net() {
     let output = nono_bin()
         .env("NONO_ALLOW_NET", "true")

@@ -694,6 +694,20 @@ Include ALL directories in rollback snapshots, overriding all auto-exclusions. T
 nono run --rollback --rollback-all -- cargo test
 ```
 
+#### `--no-hooks`
+
+Skip agent hook installation and system prompt injection. When set, nono will not install the `PostToolUseFailure` hook into `~/.claude/hooks/` and will not pass `--append-system-prompt-file` to Claude Code.
+
+This is useful when the hook produces false positives (firing on non-sandbox errors) or when you want to debug agent behavior without nono's injected context.
+
+```bash
+nono run --no-hooks --profile claude-code --allow-cwd -- claude
+```
+
+| Environment Variable | `NONO_NO_HOOKS` |
+|---------------------|-----------------|
+| Example | `NONO_NO_HOOKS=true` |
+
 #### `--no-diagnostics`
 
 Suppress the diagnostic footer when the command exits non-zero. Useful for scripts that parse stderr and need stable output.
@@ -1016,6 +1030,7 @@ CLI flags always take precedence over environment variables.
 | `--network-profile` | `NONO_NETWORK_PROFILE` | `NONO_NETWORK_PROFILE=claude-code` |
 | `--env-credential` | `NONO_ENV_CREDENTIAL` | `NONO_ENV_CREDENTIAL=key1,key2` |
 | `--capability-elevation` | `NONO_CAPABILITY_ELEVATION` | `NONO_CAPABILITY_ELEVATION=true` |
+| `--no-hooks` | `NONO_NO_HOOKS` | `NONO_NO_HOOKS=true` |
 | `--external-proxy` | `NONO_EXTERNAL_PROXY` | `NONO_EXTERNAL_PROXY=squid.corp:3128` |
 | `--external-proxy-bypass` | `NONO_EXTERNAL_PROXY_BYPASS` | `NONO_EXTERNAL_PROXY_BYPASS=internal.corp,*.private.net` (comma-separated) |
 

@@ -427,6 +427,12 @@ pub struct SandboxArgs {
     #[arg(long, short = 'c', value_name = "FILE")]
     pub config: Option<PathBuf>,
 
+    /// Skip agent hook installation and system prompt injection.
+    /// Disables the PostToolUseFailure hook and --append-system-prompt-file
+    /// for this session.
+    #[arg(long, env = "NONO_NO_HOOKS")]
+    pub no_hooks: bool,
+
     /// Enable verbose output
     #[arg(long, short = 'v', action = clap::ArgAction::Count)]
     pub verbose: u8,

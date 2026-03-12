@@ -456,6 +456,7 @@ mod tests {
             allow_bind: vec![],
             allow_port: vec![],
             proxy_port: None,
+            no_hooks: false,
         }
     }
 
