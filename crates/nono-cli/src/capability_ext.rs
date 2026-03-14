@@ -654,6 +654,43 @@ mod tests {
     }
 
     #[test]
+    fn test_from_loaded_profile_extends_default_respects_excluded_blocked_commands() {
+        let dir = tempdir().expect("tmpdir");
+        let profile_path = dir.path().join("no-dangerous-commands.json");
+        std::fs::write(
+            &profile_path,
+            r#"{
+                "meta": { "name": "no-dangerous-commands", "version": "1.0.0" },
+                "extends": "default",
+                "policy": {
+                    "exclude_groups": [
+                        "dangerous_commands",
+                        "dangerous_commands_linux",
+                        "dangerous_commands_macos"
+                    ]
+                },
+                "workdir": { "access": "readwrite" }
+            }"#,
+        )
+        .expect("write profile");
+
+        let profile = crate::profile::load_profile_from_path(&profile_path).expect("load profile");
+        let workdir = tempdir().expect("workdir");
+        let args = sandbox_args();
+        let (caps, _) =
+            CapabilitySet::from_profile(&profile, workdir.path(), &args).expect("build caps");
+
+        assert!(
+            !caps.blocked_commands().contains(&"rm".to_string()),
+            "excluded dangerous_commands should remove rm from blocked commands"
+        );
+        assert!(
+            !caps.blocked_commands().contains(&"shred".to_string()),
+            "excluded dangerous_commands_linux should remove shred from blocked commands"
+        );
+    }
+
+    #[test]
     fn test_from_profile_policy_add_allow_paths_add_capabilities() {
         let dir = tempdir().expect("tmpdir");
         let read_dir = dir.path().join("read-dir");

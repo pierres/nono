@@ -1552,6 +1552,45 @@ mod tests {
     }
 
     #[test]
+    fn test_load_profile_extends_default_respects_excluded_groups() {
+        let dir = tempdir().expect("tmpdir");
+        let profile_path = dir.path().join("no-dangerous-commands.json");
+        std::fs::write(
+            &profile_path,
+            r#"{
+                "meta": { "name": "no-dangerous-commands", "version": "1.0.0" },
+                "extends": "default",
+                "policy": {
+                    "exclude_groups": [
+                        "dangerous_commands",
+                        "dangerous_commands_linux",
+                        "dangerous_commands_macos"
+                    ]
+                },
+                "workdir": { "access": "readwrite" }
+            }"#,
+        )
+        .expect("write profile");
+
+        let profile = load_profile_from_path(&profile_path).expect("load profile");
+
+        assert!(
+            !profile
+                .security
+                .groups
+                .contains(&"dangerous_commands".to_string()),
+            "excluded dangerous_commands should not be present in finalized groups"
+        );
+        assert!(
+            !profile
+                .security
+                .groups
+                .contains(&"dangerous_commands_macos".to_string()),
+            "excluded dangerous_commands_macos should not be present in finalized groups"
+        );
+    }
+
+    #[test]
     fn test_workdir_config_readwrite() {
         let json_str = r#"{
             "meta": { "name": "test-profile" },
