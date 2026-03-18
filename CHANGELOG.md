@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.20.0] - 2026-03-18
+
+### Features
+
+- Support multiple base profiles in extends field (#399) ([#399](https://github.com/always-further/nono/pull/399))
+
+- *(cli)* Standardize network flag naming and add listen_port support (#415) ([#415](https://github.com/always-further/nono/pull/415))
+
 ## [0.19.0] - 2026-03-18
 
 ### Bug Fixes
