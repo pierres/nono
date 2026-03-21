@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.21.0] - 2026-03-21
+
+### Bug Fixes
+
+- *(setup)* Detect Landlock via syscall probe instead of LSM file (#417) ([#417](https://github.com/always-further/nono/pull/417))
+
+- *(cli)* Add ~/.opencode to opencode profile paths (#421) ([#421](https://github.com/always-further/nono/pull/421))
+
+
+### Features
+
+- *(policy)* Add standard I/O and fd paths to base_posix group (#441) ([#441](https://github.com/always-further/nono/pull/441))
+
+- *(trust)* Add --user flag to sign-policy for user-level trust policy (#440) ([#440](https://github.com/always-further/nono/pull/440))
+
+- *(trust)* Scaffold policies, enforce missing includes at startup, and simplify write protection (#435) ([#435](https://github.com/always-further/nono/pull/435))
+
+
+### Doc
+
+- Fix installation command for nono-cli package (#426) ([#426](https://github.com/always-further/nono/pull/426))
+
 ## [0.20.0] - 2026-03-18
 
 ### Features
