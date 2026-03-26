@@ -35,6 +35,7 @@
 > - **Packages & Skills:** A system for customized hooks, skills, and scripts for Coding Agents — with a community registry or any git repo as a source. [#459](https://github.com/always-further/nono/issues/459)
 > - **Policy:** Work continues to make everything fully composable and group-based. [#446](https://github.com/always-further/nono/issues/446)
 
+---
 
 AI agents get filesystem access, run shell commands, and are wide open to prompt injections. The standard response is guardrails and policies. The problem is that policies can be bypassed — and guardrails can be talked out of.
 
