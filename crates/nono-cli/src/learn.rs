@@ -425,9 +425,13 @@ fn run_fs_usage_and_nettop(
     }
 
     // Extract the command basename for fs_usage's process name filter.
-    // fs_usage matches against the process name (not full path).
+    // fs_usage matches against the kernel process name, which is the
+    // resolved binary name — not the symlink name. For example,
+    // `.venv/bin/python3` may resolve to `python3.11` via a symlink chain.
+    // We must follow symlinks to get the actual binary name.
     let cmd_path = std::path::Path::new(&command[0]);
-    let cmd_name = cmd_path
+    let resolved_path = std::fs::canonicalize(cmd_path).unwrap_or_else(|_| cmd_path.to_path_buf());
+    let cmd_name = resolved_path
         .file_name()
         .and_then(|n| n.to_str())
         .ok_or_else(|| NonoError::LearnError("Invalid command name".to_string()))?;
@@ -447,47 +451,48 @@ fn run_fs_usage_and_nettop(
 
     // Start fs_usage FIRST — before the child command.
     // This ensures the sudo prompt (if needed) appears on a clean terminal,
-    // not hidden behind a TUI. Capture stderr for error diagnosis.
+    // not hidden behind a TUI.
+    //
+    // fs_usage fully buffers stdout when writing to a pipe, so trace data
+    // accumulates in an internal buffer and is lost when fs_usage is killed
+    // via SIGTERM. To work around this, we redirect output to a temp file
+    // via shell-level redirection inside sudo, then read the file after
+    // fs_usage exits.
+    let fs_usage_outfile = tempfile::NamedTempFile::new().map_err(|e| {
+        NonoError::LearnError(format!("Failed to create temp file for fs_usage: {e}"))
+    })?;
+    let fs_usage_out_path = fs_usage_outfile.path().to_path_buf();
+
+    let fs_usage_errfile = tempfile::NamedTempFile::new().map_err(|e| {
+        NonoError::LearnError(format!(
+            "Failed to create temp file for fs_usage stderr: {e}"
+        ))
+    })?;
+    let fs_usage_err_path = fs_usage_errfile.path().to_path_buf();
+
     let mut fs_usage = Command::new("sudo")
         .args([
-            "fs_usage", "-w", // Wide output (full paths)
-            "-f", "filesys", // Filesystem events
-            "-f", "pathname", // Pathname events (stat, readlink, etc.)
-            cmd_name,
+            "bash",
+            "-c",
+            &format!(
+                "exec fs_usage -w -f filesys -f pathname {} > '{}' 2> '{}'",
+                cmd_name,
+                fs_usage_out_path.display(),
+                fs_usage_err_path.display()
+            ),
         ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .spawn()
         .map_err(|e| {
             NonoError::LearnError(format!("Failed to spawn fs_usage (sudo required): {}", e))
         })?;
 
-    let stdout = fs_usage
-        .stdout
-        .take()
-        .ok_or_else(|| NonoError::LearnError("Failed to capture fs_usage stdout".to_string()))?;
-
-    let fs_usage_stderr = fs_usage.stderr.take();
-
-    // Wait for fs_usage to produce its first line of output (or a brief
-    // timeout) before spawning the child. This ensures the kernel trace
-    // facility is attached before events start. We use a blocking read
-    // on a thread with a timeout to avoid a fixed sleep.
-    let (ready_tx, ready_rx) = std::sync::mpsc::channel::<Option<u8>>();
-    let mut reader = BufReader::new(stdout);
-    let peek_handle = std::thread::spawn(move || {
-        use std::io::Read;
-        let mut buf = [0u8; 1];
-        let byte = match reader.read(&mut buf) {
-            Ok(1) => Some(buf[0]),
-            _ => None,
-        };
-        let _ = ready_tx.send(byte);
-        (reader, byte)
-    });
-
-    // Wait up to 2 seconds for fs_usage to produce output
-    let _ready = ready_rx.recv_timeout(Duration::from_secs(2)).ok();
+    // Wait for fs_usage to attach the kernel trace facility before
+    // spawning the child. A fixed sleep is acceptable here: the previous
+    // pipe+peek approach was unreliable due to stdout buffering.
+    std::thread::sleep(Duration::from_secs(2));
 
     // Now spawn the target command
     let mut child = Command::new(&command[0])
@@ -512,48 +517,6 @@ fn run_fs_usage_and_nettop(
         }
     };
 
-    // Read fs_usage output in a background thread.
-    // The main thread waits for the child to exit, then kills fs_usage
-    // which closes the pipe and unblocks the reader thread.
-    //
-    // Filtering relies on fs_usage's command name argument. fs_usage appends
-    // "ProcessName.threadID" (not PID) to each line, and the traced process
-    // may fork into children with different PIDs/names, so PID-based filtering
-    // would silently drop most results. The command name filter is sufficient.
-    let fs_reader_handle = std::thread::spawn(move || {
-        let (reader, peeked_byte) = match peek_handle.join() {
-            Ok(result) => result,
-            Err(_) => return Vec::new(),
-        };
-
-        let mut accesses = Vec::new();
-
-        // If we peeked a byte during the readiness check, prepend it
-        // to the first line
-        let mut first_line_prefix = peeked_byte.map(|b| String::from(b as char));
-
-        let raw_stdout = reader.into_inner();
-        let line_reader = BufReader::new(raw_stdout);
-        for line in line_reader.lines() {
-            match line {
-                Ok(l) => {
-                    let full_line = if let Some(prefix) = first_line_prefix.take() {
-                        format!("{}{}", prefix, l)
-                    } else {
-                        l
-                    };
-                    if let Some(access) = parse_fs_usage_line(&full_line) {
-                        accesses.push(access);
-                    }
-                }
-                Err(e) => {
-                    debug!("Error reading fs_usage line: {}", e);
-                }
-            }
-        }
-        accesses
-    });
-
     // Wait for child to exit. Use a dedicated thread for timeout so
     // the main thread can block on child.wait() instead of polling.
     let timeout_duration = timeout.map(Duration::from_secs);
@@ -577,9 +540,8 @@ fn run_fs_usage_and_nettop(
     let _ = child.wait();
     debug!("Child process exited");
 
-    // Kill fs_usage — this closes the pipe and unblocks the reader thread.
-    // Use `sudo pkill -P <pid>` to kill the fs_usage child of the sudo
-    // wrapper, then kill sudo itself.
+    // Kill fs_usage. The sudo bash wrapper spawns fs_usage as a child,
+    // so we kill both the wrapper and its children.
     kill_fs_usage(&fs_usage);
     let _ = fs_usage.wait();
 
@@ -590,21 +552,36 @@ fn run_fs_usage_and_nettop(
     }
 
     // Check fs_usage stderr for errors
-    if let Some(mut stderr) = fs_usage_stderr {
-        let mut err_output = String::new();
-        use std::io::Read;
-        if stderr.read_to_string(&mut err_output).is_ok() && !err_output.is_empty() {
-            debug!("fs_usage stderr: {}", err_output.trim());
+    if let Ok(err_content) = std::fs::read_to_string(&fs_usage_err_path) {
+        let trimmed = err_content.trim();
+        if !trimmed.is_empty() {
+            debug!("fs_usage stderr: {}", trimmed);
         }
     }
 
-    // Collect filesystem results from reader thread
-    let file_accesses = match fs_reader_handle.join() {
-        Ok(accesses) => accesses,
-        Err(_) => {
-            warn!("fs_usage reader thread panicked, returning partial results");
-            Vec::new()
+    // Read fs_usage output from the temp file
+    let file_accesses = {
+        let file = std::fs::File::open(&fs_usage_out_path)
+            .map_err(|e| NonoError::LearnError(format!("Failed to read fs_usage output: {e}")))?;
+        let reader = BufReader::new(file);
+        let mut accesses = Vec::new();
+        for line in reader.lines() {
+            match line {
+                Ok(l) => {
+                    if let Some(access) = parse_fs_usage_line(&l) {
+                        accesses.push(access);
+                    }
+                }
+                Err(e) => {
+                    debug!("Error reading fs_usage line: {}", e);
+                }
+            }
         }
+        debug!(
+            "Parsed {} file accesses from fs_usage output",
+            accesses.len()
+        );
+        accesses
     };
 
     // Collect network results from nettop reader thread
